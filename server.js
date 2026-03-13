@@ -12,7 +12,7 @@ app.use(express.json());
 // ==========================================
 // 1. MONGODB DATABASE CONNECTION (BULLETPROOF)
 // ==========================================
-// Ekhon URI ba URL jeta thekei asuk, kaaj korbe!
+// This handles both MONGODB_URI and MONGODB_URL safely
 const dbConnectionLink = process.env.MONGODB_URI || process.env.MONGODB_URL;
 
 if (dbConnectionLink) {
@@ -24,8 +24,10 @@ if (dbConnectionLink) {
 }
 
 // ==========================================
-// 2. DATABASE SCHEMA (Student Data Structure)
+// 2. DATABASE SCHEMAS & MODELS
 // ==========================================
+
+// (A) Student Schema
 const studentSchema = new mongoose.Schema({
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
@@ -35,14 +37,40 @@ const studentSchema = new mongoose.Schema({
     batch: { type: String, default: "Not Assigned" },
     registeredAt: { type: Date, default: Date.now }
 });
-
 const Student = mongoose.model('Student', studentSchema);
+
+// (B) Study Material Schema (For Admin Uploads)
+const materialSchema = new mongoose.Schema({
+    year: { type: String, required: true },
+    className: { type: String, required: true },
+    subject: { type: String, default: "Physics" },
+    chapter: { type: String, required: true },
+    lecture: { type: Number, required: true },
+    details: { type: String, default: "" },
+    link: { type: String, required: true }, // YouTube link
+    pdfLink: { type: String, default: "" }, // Google Drive link
+    timestamp: { type: Date, default: Date.now }
+});
+const Material = mongoose.model('Material', materialSchema);
+
+// (C) Batch Access Code Schema (For Admin Generation)
+const batchCodeSchema = new mongoose.Schema({
+    code: { type: String, required: true, unique: true },
+    className: { type: String, required: true },
+    year: { type: String, required: true },
+    isUsed: { type: Boolean, default: false },
+    usedByEmail: { type: String, default: null },
+    createdAt: { type: Date, default: Date.now },
+    usedAt: { type: Date, default: null }
+});
+const BatchCode = mongoose.model('BatchCode', batchCodeSchema);
+
 
 // ==========================================
 // 3. STUDENT REGISTRATION ROUTES
 // ==========================================
 
-// (A) Check if student is already registered
+// Check if student is already registered
 app.get('/api/students/check/:email', async (req, res) => {
     try {
         const studentEmail = req.params.email;
@@ -54,11 +82,11 @@ app.get('/api/students/check/:email', async (req, res) => {
             return res.json({ isRegistered: false });
         }
     } catch (error) {
-        res.status(500).json({ error: "Server error while checking student in database." });
+        res.status(500).json({ error: "Server error while checking database." });
     }
 });
 
-// (B) Register a new student
+// Register a new student
 app.post('/api/students/register', async (req, res) => {
     try {
         const { name, email, phone, studentClass, joinYear } = req.body;
@@ -74,7 +102,6 @@ app.post('/api/students/register', async (req, res) => {
 
         await newStudent.save();
         res.json({ message: "Registration Successful!", student: newStudent });
-
     } catch (error) {
         if(error.code === 11000) {
             return res.status(400).json({ error: "This email is already registered." });
@@ -83,26 +110,60 @@ app.post('/api/students/register', async (req, res) => {
     }
 });
 
-// ==========================================
-// 4. ADMIN SEARCH ROUTE
-// ==========================================
-// Search student by Name or Email
-app.get('/api/students/search', async (req, res) => {
-    try {
-        const searchQuery = req.query.q;
-        if (!searchQuery) return res.status(400).json({ error: "Search query is required." });
 
-        const students = await Student.find({
-            $or: [
-                { name: { $regex: searchQuery, $options: 'i' } }, 
-                { email: { $regex: searchQuery, $options: 'i' } }
-            ]
-        });
-        res.json(students);
+// ==========================================
+// 4. ADMIN CONTROL ROUTES (Upload & Generate)
+// ==========================================
+
+// Route to upload a new video/material to MongoDB
+app.post('/api/admin/upload-material', async (req, res) => {
+    try {
+        const { year, className, chapter, lecture, details, link, pdfLink } = req.body;
+        
+        if (!year || !className || !chapter || !lecture || !link) {
+            return res.status(400).json({ error: "Missing required fields for upload." });
+        }
+
+        const newMaterial = new Material({ year, className, chapter, lecture, details, link, pdfLink });
+        await newMaterial.save();
+        
+        res.json({ message: "Material successfully saved to backend database!" });
     } catch (error) {
-        res.status(500).json({ error: "Error occurred while searching." });
+        res.status(500).json({ error: "Database error while saving material." });
     }
 });
+
+// Route to generate a new unique access code
+app.post('/api/admin/generate-code', async (req, res) => {
+    try {
+        const { className, year, code } = req.body;
+
+        if (!className || !year || !code) {
+            return res.status(400).json({ error: "Missing required fields." });
+        }
+
+        const newCode = new BatchCode({ code, className, year });
+        await newCode.save();
+
+        res.json({ message: "Access code successfully generated!" });
+    } catch (error) {
+        if(error.code === 11000) {
+            return res.status(400).json({ error: "This code already exists." });
+        }
+        res.status(500).json({ error: "Database error while saving code." });
+    }
+});
+
+// Route to fetch all generated codes (History)
+app.get('/api/admin/codes-history', async (req, res) => {
+    try {
+        const codes = await BatchCode.find().sort({ createdAt: -1 }); // Sort newest first
+        res.json(codes);
+    } catch (error) {
+        res.status(500).json({ error: "Failed to fetch code history." });
+    }
+});
+
 
 // ==========================================
 // 5. GEMINI AI ROUTE
@@ -114,7 +175,6 @@ app.post('/api/chat', async (req, res) => {
 
         const systemInstruction = "You are a friendly and helpful Physics teacher AI for Chronex Classes. Keep answers short, clear, and easy to understand for class 11 & 12 students. Use formatting like bold, lists, and LaTeX equations where needed. If they ask in Bengali, reply in clear Bengali.";
 
-        // Direct using process.env so ReferenceError is impossible
         const apiKey = process.env.GEMINI_API_KEY;
         
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`, {
@@ -135,6 +195,7 @@ app.post('/api/chat', async (req, res) => {
         res.status(500).json({ error: "Backend AI failed to process the request." });
     }
 });
+
 
 // ==========================================
 // 6. SERVER START
