@@ -10,21 +10,17 @@ app.use(cors());
 app.use(express.json());
 
 // ==========================================
-// IMPORTANT: Environment Variables
-// (This was missing in your previous error)
+// 1. MONGODB DATABASE CONNECTION (BULLETPROOF)
 // ==========================================
-const MONGODB_URL = process.env.MONGODB_URI;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+// Ekhon URI ba URL jeta thekei asuk, kaaj korbe!
+const dbConnectionLink = process.env.MONGODB_URI || process.env.MONGODB_URL;
 
-// ==========================================
-// 1. MONGODB DATABASE CONNECTION
-// ==========================================
-if (MONGODB_URI) {
-    mongoose.connect(MONGODB_URI)
+if (dbConnectionLink) {
+    mongoose.connect(dbConnectionLink)
         .then(() => console.log('Successfully connected to MongoDB Database!'))
         .catch(err => console.error('MongoDB Connection Error:', err));
 } else {
-    console.log('Warning: MONGODB_URI is not defined. Database connection skipped.');
+    console.log('Warning: Neither MONGODB_URI nor MONGODB_URL is defined. Database connection skipped.');
 }
 
 // ==========================================
@@ -118,7 +114,10 @@ app.post('/api/chat', async (req, res) => {
 
         const systemInstruction = "You are a friendly and helpful Physics teacher AI for Chronex Classes. Keep answers short, clear, and easy to understand for class 11 & 12 students. Use formatting like bold, lists, and LaTeX equations where needed. If they ask in Bengali, reply in clear Bengali.";
 
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
+        // Direct using process.env so ReferenceError is impossible
+        const apiKey = process.env.GEMINI_API_KEY;
+        
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
