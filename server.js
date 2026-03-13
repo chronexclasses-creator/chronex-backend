@@ -4,45 +4,49 @@ const mongoose = require('mongoose');
 require('dotenv').config();
 
 const app = express();
+
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-// 🔐 Environment Variables (Porobortite Render-e set korbo)
-const MONGODB_URL = process.env.MONGODB_URI;
+// ==========================================
+// IMPORTANT: Environment Variables
+// (This was missing in your previous error)
+// ==========================================
+const MONGODB_URI = process.env.MONGODB_URI;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // ==========================================
-// 🗄️ 1. MONGODB DATABASE CONNECTION
+// 1. MONGODB DATABASE CONNECTION
 // ==========================================
 if (MONGODB_URI) {
     mongoose.connect(MONGODB_URI)
-        .then(() => console.log('✅ MongoDB Database-er sathe successfully connect hoyeche!'))
-        .catch(err => console.error('❌ MongoDB Connection Error:', err));
+        .then(() => console.log('Successfully connected to MongoDB Database!'))
+        .catch(err => console.error('MongoDB Connection Error:', err));
 } else {
-    console.log('⚠️ Warning: Database link nei. Ekhon database kaaj korbe na.');
+    console.log('Warning: MONGODB_URI is not defined. Database connection skipped.');
 }
 
 // ==========================================
-// 📂 2. DATABASE STRUCTURE (Student Data)
+// 2. DATABASE SCHEMA (Student Data Structure)
 // ==========================================
-// Tui jemon cheyechili: Year > Class > Batch > Student Details
 const studentSchema = new mongoose.Schema({
     name: { type: String, required: true },
-    email: { type: String, required: true, unique: true }, // Email ta unique hobe
+    email: { type: String, required: true, unique: true },
     phone: { type: String, required: true },
-    studentClass: { type: String, required: true }, // "11", "12", ba "Dropper"
-    joinYear: { type: String, required: true }, // Jemon: "2024", "2025"
-    batch: { type: String, default: "Not Assigned" }, // Pore update kora jabe
+    studentClass: { type: String, required: true }, 
+    joinYear: { type: String, required: true },
+    batch: { type: String, default: "Not Assigned" },
     registeredAt: { type: Date, default: Date.now }
 });
 
 const Student = mongoose.model('Student', studentSchema);
 
 // ==========================================
-// 📝 3. STUDENT REGISTRATION ROUTES
+// 3. STUDENT REGISTRATION ROUTES
 // ==========================================
 
-// (A) Check kora je student aage theke ache kina (Purono student der jate form na ashe)
+// (A) Check if student is already registered
 app.get('/api/students/check/:email', async (req, res) => {
     try {
         const studentEmail = req.params.email;
@@ -54,18 +58,17 @@ app.get('/api/students/check/:email', async (req, res) => {
             return res.json({ isRegistered: false });
         }
     } catch (error) {
-        res.status(500).json({ error: "Database checking error." });
+        res.status(500).json({ error: "Server error while checking student in database." });
     }
 });
 
-// (B) Notun student-er data save kora
+// (B) Register a new student
 app.post('/api/students/register', async (req, res) => {
     try {
         const { name, email, phone, studentClass, joinYear } = req.body;
         
-        // Basic Check: Sob data diyeche kina
         if (!name || !email || !phone || !studentClass) {
-            return res.status(400).json({ error: "Sob field mandatory!" });
+            return res.status(400).json({ error: "All fields are mandatory!" });
         }
 
         const newStudent = new Student({
@@ -74,40 +77,39 @@ app.post('/api/students/register', async (req, res) => {
         });
 
         await newStudent.save();
-        res.json({ message: "✅ Registration Successful!", student: newStudent });
+        res.json({ message: "Registration Successful!", student: newStudent });
 
     } catch (error) {
-        // Jodi aki email diye aabar keu chesta kore
         if(error.code === 11000) {
-            return res.status(400).json({ error: "Ei email ta aage thekei registered ache." });
+            return res.status(400).json({ error: "This email is already registered." });
         }
-        res.status(500).json({ error: "Student data save korte giye error hoyeche." });
+        res.status(500).json({ error: "Failed to save student data." });
     }
 });
 
 // ==========================================
-// 🔍 4. ADMIN SEARCH ROUTE (Student khuje paoar jonno)
+// 4. ADMIN SEARCH ROUTE
 // ==========================================
-// Nam ba Email diye search kora
+// Search student by Name or Email
 app.get('/api/students/search', async (req, res) => {
     try {
         const searchQuery = req.query.q;
-        if (!searchQuery) return res.status(400).json({ error: "Search query dite hobe." });
+        if (!searchQuery) return res.status(400).json({ error: "Search query is required." });
 
         const students = await Student.find({
             $or: [
-                { name: { $regex: searchQuery, $options: 'i' } }, // 'i' mane boro/choto haat matter korbe na
+                { name: { $regex: searchQuery, $options: 'i' } }, 
                 { email: { $regex: searchQuery, $options: 'i' } }
             ]
         });
         res.json(students);
     } catch (error) {
-        res.status(500).json({ error: "Search korte giye problem hoyeche." });
+        res.status(500).json({ error: "Error occurred while searching." });
     }
 });
 
 // ==========================================
-// 🤖 5. GEMINI AI ROUTE
+// 5. GEMINI AI ROUTE
 // ==========================================
 app.post('/api/chat', async (req, res) => {
     try {
@@ -131,14 +133,14 @@ app.post('/api/chat', async (req, res) => {
 
     } catch (error) {
         console.error("AI Error:", error.message);
-        res.status(500).json({ error: "Backend AI fail koreche." });
+        res.status(500).json({ error: "Backend AI failed to process the request." });
     }
 });
 
 // ==========================================
-// 🚀 SERVER START
+// 6. SERVER START
 // ==========================================
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-    console.log(`✅ Master Backend is running perfectly on port ${PORT}`);
+    console.log(`Master Backend is running perfectly on port ${PORT}`);
 });
