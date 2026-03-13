@@ -8,7 +8,7 @@ app.use(cors());
 app.use(express.json());
 
 // 🔐 Environment Variables (Porobortite Render-e set korbo)
-const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_URL = process.env.MONGODB_URI;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // ==========================================
