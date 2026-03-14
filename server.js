@@ -233,12 +233,14 @@ app.get('/api/materials', async (req, res) => {
     try {
         const { className, year } = req.query;
         
-        if (!className || !year) {
-            return res.status(400).json({ error: "Class and year parameters are required." });
+        // Build the query dynamically: If class & year is given, filter by them. Otherwise, fetch all.
+        let query = {};
+        if (className && year) {
+            query = { className, year };
         }
 
         // Fetch and sort materials by lecture number ascending
-        const materials = await Material.find({ className, year }).sort({ lecture: 1 });
+        const materials = await Material.find(query).sort({ lecture: 1 });
         res.json(materials);
     } catch (error) {
         res.status(500).json({ error: "Database error while fetching materials." });
